@@ -1,11 +1,16 @@
 package main
 
-import "errors"
+import (
+	"encoding/json"
+	"errors"
+
+	"github.com/lesismal/nbio/nbhttp/websocket"
+)
 
 type Room struct {
-	RoomId     string
-	MaxMembers int
-	Users      []ConnectedUser
+	RoomId     string          `json:"roomId"`
+	MaxMembers int             `json:"maxMembers"`
+	Users      []ConnectedUser `json:"users"`
 }
 
 type Rooms map[string]Room
@@ -31,6 +36,18 @@ func (rooms *Rooms) createNewRoom(roomId string, maxMembers int) (*Room, error) 
 	return &newRoom, nil
 }
 
+func (room *Room) notifyMembers() {
+	for _, v := range room.Users {
+		value, err := json.Marshal(room)
+
+		if err != nil {
+			panic(err)
+		}
+
+		v.connection.WriteMessage(websocket.TextMessage, value)
+	}
+}
+
 func (rooms *Rooms) joinRoom(roomId string, user ConnectedUser) error {
 	if entry, ok := (*rooms)[roomId]; ok {
 
@@ -42,6 +59,7 @@ func (rooms *Rooms) joinRoom(roomId string, user ConnectedUser) error {
 
 		entry.Users = append(entry.Users, user)
 		(*rooms)[roomId] = entry
+		entry.notifyMembers()
 
 		return nil
 	}
