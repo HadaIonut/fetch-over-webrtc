@@ -135,5 +135,7 @@ func (rooms *Rooms) deleteRoom(roomId string) error {
 		user.connection.WriteMessage(websocket.TextMessage, []byte("room closed"))
 	}
 	delete(*rooms, roomId)
+
 	return nil
+
 }
