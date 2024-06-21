@@ -82,7 +82,7 @@ func HandleKnownMessages(receivedMessage *SocketMessage, c *websocket.Conn) {
 }
 
 func HandleNewRoomEvent(payload NewRoomMessage, owner ConnectedUser) error {
-	newRoom, error := RoomList.createNewRoom(payload.RoomId, payload.MaxMembers)
+	newRoom, error := RoomList.createNewRoom(payload.RoomId, payload.MaxMembers, owner)
 
 	if error != nil {
 		return error

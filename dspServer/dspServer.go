@@ -93,7 +93,9 @@ func newUpgrader() *websocket.Upgrader {
 
 	u.OnClose(func(c *websocket.Conn, err error) {
 		heartBeatTimer <- true
-		fmt.Println(c.Session().(ConnectedUser).UserId)
+		user := c.Session().(ConnectedUser)
+		fmt.Println(user.UserId)
+		RoomList.removeUser(user)
 		fmt.Println("OnClose:", c.RemoteAddr().String(), err)
 	})
 	return u

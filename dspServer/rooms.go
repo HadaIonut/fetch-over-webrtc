@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/lesismal/nbio/nbhttp/websocket"
 )
@@ -10,6 +11,7 @@ import (
 type Room struct {
 	RoomId     string          `json:"roomId"`
 	MaxMembers int             `json:"maxMembers"`
+	RoomOwner  ConnectedUser   `json:"roomOwner"`
 	Users      []ConnectedUser `json:"users"`
 }
 
@@ -17,10 +19,10 @@ type Rooms map[string]Room
 
 var RoomList Rooms
 
-func (rooms *Rooms) createNewRoom(roomId string, maxMembers int) (*Room, error) {
+func (rooms *Rooms) createNewRoom(roomId string, maxMembers int, owner ConnectedUser) (*Room, error) {
 
-	newRoom := Room{RoomId: roomId, MaxMembers: maxMembers}
-
+	newRoom := Room{RoomId: roomId, MaxMembers: maxMembers, RoomOwner: owner}
+	newRoom.RoomOwner.connection.WriteMessage(websocket.TextMessage, []byte("test"))
 	if (*rooms) == nil {
 		(*rooms) = make(map[string]Room)
 	}
@@ -36,16 +38,14 @@ func (rooms *Rooms) createNewRoom(roomId string, maxMembers int) (*Room, error) 
 	return &newRoom, nil
 }
 
-func (room *Room) notifyMembers() {
-	for _, v := range room.Users {
-		value, err := json.Marshal(room)
-
-		if err != nil {
-			panic(err)
-		}
-
-		v.connection.WriteMessage(websocket.TextMessage, value)
+func (room *Room) notifyOwner() {
+	roomMembers, error := json.Marshal(room.Users)
+	fmt.Println(error, room.RoomOwner.UserId)
+	if error != nil {
+		panic(error)
 	}
+
+	room.RoomOwner.connection.WriteMessage(websocket.TextMessage, roomMembers)
 }
 
 func (rooms *Rooms) joinRoom(roomId string, user ConnectedUser) error {
@@ -59,11 +59,17 @@ func (rooms *Rooms) joinRoom(roomId string, user ConnectedUser) error {
 
 		entry.Users = append(entry.Users, user)
 		(*rooms)[roomId] = entry
-		entry.notifyMembers()
+		entry.notifyOwner()
 
 		return nil
 	}
 	return errors.New("Room not found")
+}
+
+func (rooms *Rooms) removeUser(user ConnectedUser) {
+	for roomId := range *rooms {
+		rooms.leaveRoom(roomId, user)
+	}
 }
 
 func (rooms *Rooms) leaveRoom(roomId string, user ConnectedUser) error {
@@ -85,10 +91,15 @@ func (rooms *Rooms) leaveRoom(roomId string, user ConnectedUser) error {
 	}
 
 	room := (*rooms)[roomId]
-	for i := userIndex; i < len((*rooms)[roomId].Users)-1; i++ {
+	roomMemberCount := len((*rooms)[roomId].Users)
+
+	for i := userIndex; i < roomMemberCount-1; i++ {
 		room.Users[i] = room.Users[i+1]
 	}
+	room.Users = room.Users[:roomMemberCount-1]
 	(*rooms)[roomId] = room
+
+	room.notifyOwner()
 
 	return nil
 }
