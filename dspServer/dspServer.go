@@ -57,17 +57,39 @@ func handleMessge(c *websocket.Conn, messageType websocket.MessageType, data []b
 	}
 }
 
+func HandleUserHearthBeat(c *websocket.Conn) chan bool {
+	ticker := time.NewTicker(1 * time.Minute)
+	done := make(chan bool)
+
+	go func() {
+		for {
+			select {
+			case <-done:
+				fmt.Println("timer done")
+				return
+			case <-ticker.C:
+				c.WriteMessage(websocket.PingMessage, []byte("ping"))
+			}
+		}
+	}()
+	return done
+}
+
 func newUpgrader() *websocket.Upgrader {
+
 	u := websocket.NewUpgrader()
+	var heartBeatTimer chan bool
 	u.OnOpen(func(c *websocket.Conn) {
 		NewUser := ConnectedUser{UserId: uuid.New()}
 		c.SetSession(NewUser)
+		heartBeatTimer = HandleUserHearthBeat(c)
 
 		fmt.Println("OnOpen:", c.RemoteAddr().String())
 		c.WriteMessage(websocket.TextMessage, NewUser.GetJson())
 	})
 	u.OnMessage(handleMessge)
 	u.OnClose(func(c *websocket.Conn, err error) {
+		heartBeatTimer <- true
 		fmt.Println(c.Session().(ConnectedUser).UserId)
 		fmt.Println("OnClose:", c.RemoteAddr().String(), err)
 	})
