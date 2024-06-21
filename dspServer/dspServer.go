@@ -27,8 +27,9 @@ const (
 )
 
 type ConnectedUser struct {
-	UserId     uuid.UUID `json:"userId"`
-	connection *websocket.Conn
+	UserId      uuid.UUID `json:"userId"`
+	IsRoomOwner bool      `json:"isRoomOwner"`
+	connection  *websocket.Conn
 }
 
 func (User *ConnectedUser) GetJson() []byte {
@@ -78,12 +79,13 @@ func HandleUserHearthBeat(c *websocket.Conn) chan bool {
 
 func newUpgrader() *websocket.Upgrader {
 	u := websocket.NewUpgrader()
-	var heartBeatTimer chan bool
+	heartBeatTimer := make(map[string]chan bool)
 
 	u.OnOpen(func(c *websocket.Conn) {
-		NewUser := ConnectedUser{UserId: uuid.New(), connection: c}
+		userId := uuid.New()
+		NewUser := ConnectedUser{UserId: userId, connection: c}
 		c.SetSession(NewUser)
-		heartBeatTimer = HandleUserHearthBeat(c)
+		heartBeatTimer[userId.String()] = HandleUserHearthBeat(c)
 
 		fmt.Println("OnOpen:", c.RemoteAddr().String())
 		c.WriteMessage(websocket.TextMessage, NewUser.GetJson())
@@ -92,8 +94,8 @@ func newUpgrader() *websocket.Upgrader {
 	u.OnMessage(handleMessge)
 
 	u.OnClose(func(c *websocket.Conn, err error) {
-		heartBeatTimer <- true
 		user := c.Session().(ConnectedUser)
+		heartBeatTimer[user.UserId.String()] <- true
 		fmt.Println(user.UserId)
 		RoomList.removeUser(user)
 		fmt.Println("OnClose:", c.RemoteAddr().String(), err)

@@ -19,10 +19,11 @@ type Rooms map[string]Room
 
 var RoomList Rooms
 
-func (rooms *Rooms) createNewRoom(roomId string, maxMembers int, owner ConnectedUser) (*Room, error) {
+func (rooms *Rooms) createNewRoom(roomId string, maxMembers int, owner *ConnectedUser) (*Room, error) {
 
-	newRoom := Room{RoomId: roomId, MaxMembers: maxMembers, RoomOwner: owner}
+	newRoom := Room{RoomId: roomId, MaxMembers: maxMembers, RoomOwner: *owner}
 	newRoom.RoomOwner.connection.WriteMessage(websocket.TextMessage, []byte("test"))
+
 	if (*rooms) == nil {
 		(*rooms) = make(map[string]Room)
 	}
@@ -34,13 +35,14 @@ func (rooms *Rooms) createNewRoom(roomId string, maxMembers int, owner Connected
 	}
 
 	(*rooms)[roomId] = newRoom
+	owner.IsRoomOwner = true
 
 	return &newRoom, nil
 }
 
 func (room *Room) notifyOwner() {
 	roomMembers, error := json.Marshal(room.Users)
-	fmt.Println(error, room.RoomOwner.UserId)
+
 	if error != nil {
 		panic(error)
 	}
@@ -67,8 +69,27 @@ func (rooms *Rooms) joinRoom(roomId string, user ConnectedUser) error {
 }
 
 func (rooms *Rooms) removeUser(user ConnectedUser) {
-	for roomId := range *rooms {
-		rooms.leaveRoom(roomId, user)
+	fmt.Println()
+	if user.IsRoomOwner {
+		var roomIdToDelete string
+
+		for roomId := range *rooms {
+			if (*rooms)[roomId].RoomOwner.UserId == user.UserId {
+				roomIdToDelete = roomId
+				break
+			}
+		}
+
+		err := rooms.deleteRoom(roomIdToDelete)
+
+		if err != nil {
+			fmt.Println(err)
+		}
+
+	} else {
+		for roomId := range *rooms {
+			rooms.leaveRoom(roomId, user)
+		}
 	}
 }
 
@@ -101,5 +122,18 @@ func (rooms *Rooms) leaveRoom(roomId string, user ConnectedUser) error {
 
 	room.notifyOwner()
 
+	return nil
+}
+
+func (rooms *Rooms) deleteRoom(roomId string) error {
+	if _, ok := (*rooms)[roomId]; !ok {
+		return errors.New("Room not found")
+	}
+
+	usersToNotify := (*rooms)[roomId].Users
+	for _, user := range usersToNotify {
+		user.connection.WriteMessage(websocket.TextMessage, []byte("room closed"))
+	}
+	delete(*rooms, roomId)
 	return nil
 }

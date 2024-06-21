@@ -25,7 +25,7 @@ type SocketMessage struct {
 	TypeName MessageTypes
 	Payload  interface{}
 }
-type MessageFunctionHandler[MessageType any] func(payload MessageType, user ConnectedUser) error
+type MessageFunctionHandler[MessageType any] func(payload MessageType, user *ConnectedUser) error
 
 func GetPayload[outType any](socketMessage *SocketMessage) (outType, error) {
 	var payload outType
@@ -44,7 +44,7 @@ func GetPayload[outType any](socketMessage *SocketMessage) (outType, error) {
 	return payload, nil
 }
 
-func HandleSpecificMessage[MessageType any](user ConnectedUser, receivedMessage *SocketMessage, c *websocket.Conn, handleFunc MessageFunctionHandler[MessageType]) {
+func HandleSpecificMessage[MessageType any](user *ConnectedUser, receivedMessage *SocketMessage, c *websocket.Conn, handleFunc MessageFunctionHandler[MessageType]) {
 	payload, err := GetPayload[MessageType](receivedMessage)
 
 	if err != nil {
@@ -68,38 +68,36 @@ func HandleKnownMessages(receivedMessage *SocketMessage, c *websocket.Conn) {
 
 	switch receivedMessage.TypeName {
 	case NewRoom:
-		HandleSpecificMessage(user, receivedMessage, c, HandleNewRoomEvent)
+		HandleSpecificMessage(&user, receivedMessage, c, HandleNewRoomEvent)
+		c.SetSession(user)
 		return
 	case JoinRoom:
-		HandleSpecificMessage(user, receivedMessage, c, HandleJoinRoomEvent)
+		HandleSpecificMessage(&user, receivedMessage, c, HandleJoinRoomEvent)
+		c.SetSession(user)
 		return
 	case LeaveRoom:
-		HandleSpecificMessage(user, receivedMessage, c, HandleLeaveRoomEvent)
+		HandleSpecificMessage(&user, receivedMessage, c, HandleLeaveRoomEvent)
+		c.SetSession(user)
 		return
 	default:
 		c.WriteMessage(websocket.TextMessage, []byte("unknown format"))
 	}
 }
 
-func HandleNewRoomEvent(payload NewRoomMessage, owner ConnectedUser) error {
+func HandleNewRoomEvent(payload NewRoomMessage, owner *ConnectedUser) error {
 	newRoom, error := RoomList.createNewRoom(payload.RoomId, payload.MaxMembers, owner)
 
 	if error != nil {
 		return error
 	}
 
-	error = RoomList.joinRoom(payload.RoomId, owner)
-
-	if error != nil {
-		return error
-	}
 	fmt.Println("roomList:", RoomList, newRoom)
 
 	return nil
 }
 
-func HandleJoinRoomEvent(payload JoinRoomMessage, user ConnectedUser) error {
-	error := RoomList.joinRoom(payload.RoomId, user)
+func HandleJoinRoomEvent(payload JoinRoomMessage, user *ConnectedUser) error {
+	error := RoomList.joinRoom(payload.RoomId, *user)
 
 	if error != nil {
 		return error
@@ -108,8 +106,8 @@ func HandleJoinRoomEvent(payload JoinRoomMessage, user ConnectedUser) error {
 	return nil
 }
 
-func HandleLeaveRoomEvent(payload LeaveRoomMessage, user ConnectedUser) error {
-	error := RoomList.leaveRoom(payload.RoomId, user)
+func HandleLeaveRoomEvent(payload LeaveRoomMessage, user *ConnectedUser) error {
+	error := RoomList.leaveRoom(payload.RoomId, *user)
 
 	if error != nil {
 		return error
