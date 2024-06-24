@@ -24,13 +24,19 @@ const (
 	NewRoom = iota
 	JoinRoom
 	LeaveRoom
+	InitUser
 )
 
 type ConnectedUser struct {
 	UserId         uuid.UUID `json:"userId"`
 	IsRoomOwner    bool      `json:"isRoomOwner"`
+	UserDSP        string    `json:"userDSP"`
 	connection     *websocket.Conn
 	heartBeatTimer chan bool
+}
+
+func (user *ConnectedUser) SetDSP(DSP string) {
+	user.UserDSP = DSP
 }
 
 func (User *ConnectedUser) GetJson() []byte {

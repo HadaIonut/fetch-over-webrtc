@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/lesismal/nbio/nbhttp/websocket"
 )
 
@@ -20,9 +21,11 @@ type Rooms map[string]Room
 var RoomList Rooms
 
 func (rooms *Rooms) createNewRoom(roomId string, maxMembers int, owner *ConnectedUser) (*Room, error) {
-
-	newRoom := Room{RoomId: roomId, MaxMembers: maxMembers, RoomOwner: *owner}
-	newRoom.RoomOwner.connection.WriteMessage(websocket.TextMessage, []byte("test"))
+	if roomId == "" {
+		roomId = uuid.New().String()
+	}
+	owner.IsRoomOwner = true
+	newRoom := Room{RoomId: roomId, MaxMembers: maxMembers, RoomOwner: *owner, Users: []ConnectedUser{}}
 
 	if (*rooms) == nil {
 		(*rooms) = make(map[string]Room)
@@ -35,7 +38,6 @@ func (rooms *Rooms) createNewRoom(roomId string, maxMembers int, owner *Connecte
 	}
 
 	(*rooms)[roomId] = newRoom
-	owner.IsRoomOwner = true
 
 	return &newRoom, nil
 }
@@ -50,12 +52,12 @@ func (room *Room) notifyOwner() {
 	room.RoomOwner.connection.WriteMessage(websocket.TextMessage, roomMembers)
 }
 
-func (rooms *Rooms) joinRoom(roomId string, user ConnectedUser) error {
+func (rooms *Rooms) joinRoom(roomId string, user ConnectedUser) (Room, error) {
 	if entry, ok := (*rooms)[roomId]; ok {
 
 		for _, v := range entry.Users {
 			if v.UserId == user.UserId {
-				return errors.New("User already in room")
+				return Room{}, errors.New("User already in room")
 			}
 		}
 
@@ -63,9 +65,9 @@ func (rooms *Rooms) joinRoom(roomId string, user ConnectedUser) error {
 		(*rooms)[roomId] = entry
 		entry.notifyOwner()
 
-		return nil
+		return entry, nil
 	}
-	return errors.New("Room not found")
+	return Room{}, errors.New("Room not found")
 }
 
 func (rooms *Rooms) removeUser(user ConnectedUser) {
