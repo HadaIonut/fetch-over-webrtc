@@ -51,7 +51,7 @@ func (User *ConnectedUser) GetJson() []byte {
 
 func handleMessge(c *websocket.Conn, messageType websocket.MessageType, data []byte) {
 	if messageType != 1 {
-		c.WriteMessage(websocket.TextMessage, []byte("unsupported message type"))
+		c.WriteMessage(websocket.TextMessage, NetworkErr.New("unsupported message type", "message parsing").ToJSON())
 		return
 	}
 
@@ -61,7 +61,7 @@ func handleMessge(c *websocket.Conn, messageType websocket.MessageType, data []b
 	HandleKnownMessages(&receivedMessage, c)
 
 	if err != nil {
-		c.WriteMessage(websocket.TextMessage, []byte("invalid json"))
+		c.WriteMessage(websocket.TextMessage, NetworkErr.New("invalid json", "message parsing").ToJSON())
 		return
 	}
 }

@@ -2,11 +2,33 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/lesismal/nbio/nbhttp/websocket"
 )
+
+type NetworkError struct {
+	Message string `json:"errorMessage"`
+	Action  string `json:"action"`
+}
+
+var NetworkErr NetworkError
+
+func (err *NetworkError) Error() string {
+	return fmt.Sprintf("%s while trying to execute action %s", err.Message, err.Action)
+}
+
+func (err *NetworkError) ToJSON() []byte {
+	val, marshErr := json.Marshal(err)
+	if marshErr != nil {
+		panic(marshErr)
+	}
+	return val
+}
+
+func (err *NetworkError) New(message string, action string) *NetworkError {
+	return &NetworkError{Message: message, Action: action}
+}
 
 type NewRoomMessage struct {
 	RoomId     string `json:"roomId"`
@@ -26,20 +48,20 @@ type SocketMessage struct {
 	Payload  interface{}
 }
 
-type MessageFunctionHandler[MessageType any] func(payload MessageType, user *ConnectedUser) ([]byte, error)
+type MessageFunctionHandler[MessageType any] func(payload MessageType, user *ConnectedUser) ([]byte, *NetworkError)
 
-func GetPayload[outType any](socketMessage *SocketMessage) (outType, error) {
+func GetPayload[outType any](socketMessage *SocketMessage) (outType, *NetworkError) {
 	var payload outType
 	payloadStr, err := json.Marshal(socketMessage.Payload)
 
 	if err != nil {
-		return payload, errors.New("unable to marshal")
+		return payload, NetworkErr.New("unable to marshal", "payload")
 	}
 
 	unmarshErr := json.Unmarshal(payloadStr, &payload)
 
 	if unmarshErr != nil {
-		return payload, errors.New("incorrect message structrue")
+		return payload, NetworkErr.New("incorrect message structrue", "payload")
 	}
 
 	return payload, nil
@@ -49,14 +71,14 @@ func HandleSpecificMessage[MessageType any](user *ConnectedUser, receivedMessage
 	payload, err := GetPayload[MessageType](receivedMessage)
 
 	if err != nil {
-		c.WriteMessage(websocket.TextMessage, []byte(err.Error()))
+		c.WriteMessage(websocket.TextMessage, err.ToJSON())
 		return
 	}
 
 	res, err := handleFunc(payload, user)
 
 	if err != nil {
-		c.WriteMessage(websocket.TextMessage, []byte(err.Error()))
+		c.WriteMessage(websocket.TextMessage, err.ToJSON())
 		return
 	}
 
@@ -86,11 +108,11 @@ func HandleKnownMessages(receivedMessage *SocketMessage, c *websocket.Conn) {
 		c.SetSession(user)
 		return
 	default:
-		c.WriteMessage(websocket.TextMessage, []byte("unknown format"))
+		c.WriteMessage(websocket.TextMessage, NetworkErr.New("unknown format", "types").ToJSON())
 	}
 }
 
-func HandleNewRoomEvent(payload NewRoomMessage, owner *ConnectedUser) ([]byte, error) {
+func HandleNewRoomEvent(payload NewRoomMessage, owner *ConnectedUser) ([]byte, *NetworkError) {
 	newRoom, error := RoomList.createNewRoom(payload.RoomId, payload.MaxMembers, owner)
 
 	if error != nil {
@@ -108,7 +130,7 @@ func HandleNewRoomEvent(payload NewRoomMessage, owner *ConnectedUser) ([]byte, e
 	return roomBytes, nil
 }
 
-func HandleJoinRoomEvent(payload JoinRoomMessage, user *ConnectedUser) ([]byte, error) {
+func HandleJoinRoomEvent(payload JoinRoomMessage, user *ConnectedUser) ([]byte, *NetworkError) {
 	room, error := RoomList.joinRoom(payload.RoomId, *user)
 
 	if error != nil {
@@ -124,7 +146,7 @@ func HandleJoinRoomEvent(payload JoinRoomMessage, user *ConnectedUser) ([]byte, 
 	return roomBytes, nil
 }
 
-func HandleLeaveRoomEvent(payload LeaveRoomMessage, user *ConnectedUser) ([]byte, error) {
+func HandleLeaveRoomEvent(payload LeaveRoomMessage, user *ConnectedUser) ([]byte, *NetworkError) {
 	error := RoomList.leaveRoom(payload.RoomId, *user)
 
 	if error != nil {
@@ -134,8 +156,7 @@ func HandleLeaveRoomEvent(payload LeaveRoomMessage, user *ConnectedUser) ([]byte
 	return []byte(""), nil
 }
 
-func HandleUserInitEvent(payload InitUserMessage, user *ConnectedUser) ([]byte, error) {
-	fmt.Println(payload)
+func HandleUserInitEvent(payload InitUserMessage, user *ConnectedUser) ([]byte, *NetworkError) {
 	user.SetDSP(payload.UserDSP)
 	return []byte(""), nil
 }

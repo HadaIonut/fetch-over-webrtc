@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -20,7 +19,7 @@ type Rooms map[string]Room
 
 var RoomList Rooms
 
-func (rooms *Rooms) createNewRoom(roomId string, maxMembers int, owner *ConnectedUser) (*Room, error) {
+func (rooms *Rooms) createNewRoom(roomId string, maxMembers int, owner *ConnectedUser) (*Room, *NetworkError) {
 	if roomId == "" {
 		roomId = uuid.New().String()
 	}
@@ -34,7 +33,7 @@ func (rooms *Rooms) createNewRoom(roomId string, maxMembers int, owner *Connecte
 	_, exists := (*rooms)[roomId]
 
 	if exists {
-		return nil, errors.New("Room already exists")
+		return nil, NetworkErr.New("Room already exists", "room creation")
 	}
 
 	(*rooms)[roomId] = newRoom
@@ -52,12 +51,12 @@ func (room *Room) notifyOwner() {
 	room.RoomOwner.connection.WriteMessage(websocket.TextMessage, roomMembers)
 }
 
-func (rooms *Rooms) joinRoom(roomId string, user ConnectedUser) (Room, error) {
+func (rooms *Rooms) joinRoom(roomId string, user ConnectedUser) (ConnectedUser, *NetworkError) {
 	if entry, ok := (*rooms)[roomId]; ok {
 
 		for _, v := range entry.Users {
 			if v.UserId == user.UserId {
-				return Room{}, errors.New("User already in room")
+				return ConnectedUser{}, NetworkErr.New("User already in room", "room joining")
 			}
 		}
 
@@ -65,9 +64,9 @@ func (rooms *Rooms) joinRoom(roomId string, user ConnectedUser) (Room, error) {
 		(*rooms)[roomId] = entry
 		entry.notifyOwner()
 
-		return entry, nil
+		return entry.RoomOwner, nil
 	}
-	return Room{}, errors.New("Room not found")
+	return ConnectedUser{}, NetworkErr.New("Room not found", "room joining")
 }
 
 func (rooms *Rooms) removeUser(user ConnectedUser) {
@@ -95,9 +94,9 @@ func (rooms *Rooms) removeUser(user ConnectedUser) {
 	}
 }
 
-func (rooms *Rooms) leaveRoom(roomId string, user ConnectedUser) error {
+func (rooms *Rooms) leaveRoom(roomId string, user ConnectedUser) *NetworkError {
 	if _, ok := (*rooms)[roomId]; !ok {
-		return errors.New("Room not found")
+		return NetworkErr.New("room not found", "room leaving")
 	}
 
 	userIndex := -1
@@ -110,7 +109,7 @@ func (rooms *Rooms) leaveRoom(roomId string, user ConnectedUser) error {
 	}
 
 	if userIndex == -1 {
-		return errors.New("User not in room")
+		return NetworkErr.New("User not in room", "room leaving")
 	}
 
 	room := (*rooms)[roomId]
@@ -129,7 +128,7 @@ func (rooms *Rooms) leaveRoom(roomId string, user ConnectedUser) error {
 
 func (rooms *Rooms) deleteRoom(roomId string) error {
 	if _, ok := (*rooms)[roomId]; !ok {
-		return errors.New("Room not found")
+		return NetworkErr.New("Room not found", "room deleting")
 	}
 
 	usersToNotify := (*rooms)[roomId].Users
